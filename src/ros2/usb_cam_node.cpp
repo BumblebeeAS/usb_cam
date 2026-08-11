@@ -44,9 +44,25 @@ UsbCamNode::UsbCamNode(const rclcpp::NodeOptions & node_options)
   m_camera(new usb_cam::UsbCam()),
   m_image_msg(new sensor_msgs::msg::Image()),
   m_compressed_img_msg(nullptr),
+  // SensorDataQoS (best-effort, keep_last 5) instead of the upstream
+  // rclcpp::QoS{100} (RELIABLE, 100-deep history). Two reasons:
+  //  1) Correctness for a live stream: stale frames should be dropped, not
+  //     redelivered, and a 100-frame reliable history is ~140MB of queued
+  //     images at 800x600 rgb8.
+  //  2) Deadlock avoidance: a RELIABLE writer is a FastDDS StatefulWriter,
+  //     which participates in a known AB-BA deadlock in fastrtps 2.6.x between
+  //     the flow-controller delivering a sample (deliver_sample_nts, writer
+  //     mutex held) and the EDP discovery thread unpairing a departing
+  //     subscriber (matched_reader_remove, discovery mutex held). Observed
+  //     live on the AUV (claw cam silent freeze, gdb-confirmed 2026-07-06):
+  //     every subscriber disconnect (foxglove drop, CLI tool exit) raced this;
+  //     the node's next publish() then blocked forever. A best-effort writer
+  //     is stateless and never enters check_acked_status/reader-proxy paths.
+  // NOTE: RELIABLE subscribers will NOT match a best-effort publisher --
+  // subscribe with SensorDataQoS/best-effort (correct for camera topics).
   m_image_publisher(std::make_shared<image_transport::CameraPublisher>(
       image_transport::create_camera_publisher(this, BASE_TOPIC_NAME,
-      rclcpp::QoS {100}.get_rmw_qos_profile()))),
+      rclcpp::SensorDataQoS().get_rmw_qos_profile()))),
   m_compressed_image_publisher(nullptr),
   m_compressed_cam_info_publisher(nullptr),
   m_parameters(),
@@ -174,12 +190,14 @@ void UsbCamNode::init()
   if (m_parameters.pixel_format_name == "mjpeg") {
     m_compressed_img_msg.reset(new sensor_msgs::msg::CompressedImage());
     m_compressed_img_msg->header.frame_id = m_parameters.frame_id;
+    // SensorDataQoS for the same reasons as the raw image publisher above
+    // (live stream semantics + fastrtps 2.6.x reliable-writer deadlock).
     m_compressed_image_publisher =
       this->create_publisher<sensor_msgs::msg::CompressedImage>(
-      std::string(BASE_TOPIC_NAME) + "/compressed", rclcpp::QoS(100));
+      std::string(BASE_TOPIC_NAME) + "/compressed", rclcpp::SensorDataQoS());
     m_compressed_cam_info_publisher =
       this->create_publisher<sensor_msgs::msg::CameraInfo>(
-      "camera_info", rclcpp::QoS(100));
+      "camera_info", rclcpp::SensorDataQoS());
   }
 
   m_image_msg->header.frame_id = m_parameters.frame_id;
