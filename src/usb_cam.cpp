@@ -444,18 +444,18 @@ void UsbCam::init_device()
   // Set v4l2 capture format
   // Note VIDIOC_S_FMT may change width and height
   if (-1 == usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_S_FMT), &m_image.v4l2_fmt)) {
-    throw strerror(errno);
+    throw std::runtime_error(std::string("VIDIOC_S_FMT failed: ") + strerror(errno));
   }
 
   struct v4l2_streamparm stream_params;
   memset(&stream_params, 0, sizeof(stream_params));
   stream_params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   if (usb_cam::utils::xioctl(m_fd, static_cast<int>(VIDIOC_G_PARM), &stream_params) < 0) {
-    throw strerror(errno);
+    throw std::runtime_error(std::string("VIDIOC_G_PARM failed: ") + strerror(errno));
   }
 
-  if (!stream_params.parm.capture.capability && V4L2_CAP_TIMEPERFRAME) {
-    throw "V4L2_CAP_TIMEPERFRAME not supported";
+  if (!(stream_params.parm.capture.capability & V4L2_CAP_TIMEPERFRAME)) {
+    throw std::runtime_error("V4L2_CAP_TIMEPERFRAME not supported");
   }
 
   // TODO(lucasw) need to get list of valid numerator/denominator pairs
