@@ -79,8 +79,13 @@ struct buffer
 };
 
 
-/// @brief Get epoch time shift in microseconds
-/// @details Run this at start of process to calculate epoch time shift
+/// @brief Get the offset (in microseconds) between CLOCK_MONOTONIC and the
+/// wall clock (epoch time).
+/// @details V4L2 buffer timestamps are reported against CLOCK_MONOTONIC; add
+/// this offset to convert one into epoch time. Recompute it per frame rather
+/// than caching it once at startup: the offset jumps whenever the wall clock is
+/// stepped (e.g. NTP/RTC sync some seconds after boot), and a cached value would
+/// leave every published stamp stale by that step until the node is restarted.
 /// @ref https://stackoverflow.com/questions/10266451/where-does-v4l2-buffer-timestamp-value-starts-counting
 inline time_t get_epoch_time_shift_us()
 {

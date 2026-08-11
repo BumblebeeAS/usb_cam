@@ -293,11 +293,6 @@ public:
     return m_is_capturing;
   }
 
-  inline time_t get_epoch_time_shift_us()
-  {
-    return m_epoch_time_shift_us;
-  }
-
   inline std::vector<capture_format_t> supported_formats()
   {
     if (m_supported_formats.size() == 0) {
@@ -410,7 +405,6 @@ private:
   int64_t m_buffer_time_us;
   bool m_is_capturing;
   int m_framerate;
-  const time_t m_epoch_time_shift_us;
   std::vector<capture_format_t> m_supported_formats;
 };
 
