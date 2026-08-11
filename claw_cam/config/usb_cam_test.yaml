@@ -1,0 +1,78 @@
+# Test config for tuning the claw cam (DWE exploreHD) through usb_cam.
+#
+# Uses the Bumblebee usb_cam fork built from source alongside this package
+# (BumblebeeAS/usb_cam, branch bumblebee/humble: 0.8.1 plus the kernel-5.15
+# UVC control renames, the MJPEG decode fix and SensorDataQoS publishers), NOT
+# the apt binary — launch with the workspace sourced or exposure/WB params
+# silently fail with "unknown control 'exposure_auto'".
+#
+# Every param here can be changed live, e.g.:
+#   ros2 param set /auv4/claw_cam/usb_cam_node brightness 10
+#   ros2 param set /auv4/claw_cam/usb_cam_node autoexposure false
+# -1 leaves a control at whatever value the camera currently holds.
+#
+# Controls usb_cam has no params for (hue, gamma, backlight_compensation,
+# power_line_frequency, exposure_dynamic_framerate) are set via v4l2-ctl in
+# usb_cam_test.launch.py.
+#
+# Camera nodes: /dev/video0 = MJPG (up to 1080p) + YUYV, /dev/video2 = H264.
+# If usb_cam dies at startup citing VIDIOC_S_FMT, another process holds the
+# camera: `fuser -v /dev/video0`.
+/**/usb_cam_node:
+  ros__parameters:
+    video_device: /dev/video0
+    framerate: 15.0
+    io_method: mmap
+    frame_id: auv4/claw_cam_optical
+    # mjpeg2rgb cuts bandwidth to ~3MB/s (vs YUYV ~14MB/s at 800x600 over USB 2.0's
+    # ~40MB/s) and lifts fps. The decode path was BROKEN (noise strip over black) due to a
+    # wrong-size memset + a stale construction-time SwsContext in src/usb_cam's mjpeg.hpp;
+    # that is now FIXED (offline harness: PSNR 99, pixel-perfect, ~2.1ms/frame). After a
+    # `colcon build --packages-select usb_cam` + relaunch, switch to:
+    #     pixel_format: mjpeg2rgb   (av_device_format is then ignored — the decode reads
+    #                                the camera's real output format at runtime)
+    # and eyeball the live image before making it the default. Until usb_cam is rebuilt the
+    # installed .so still has the old decode, so yuyv2rgb stays the working setting here.
+    # TEST 2026-07-07: reverted MJPG -> YUYV to check whether the intermittent
+    # capture stalls (grab thread wedged in do_select on the v4l2 fd; watchdog
+    # firing "frozen") are the known-flaky exploreHD MJPG path. YUYV is
+    # uncompressed (no per-frame JPEG buffer to corrupt), ~14MB/s at 800x600 over
+    # USB 2.0. If stalls stop under YUYV, MJPG is confirmed as the trigger.
+    pixel_format: yuyv2rgb
+    av_device_format: RGB24
+    # 800x600 to match the claw_cam.yaml calibration (see camera_info_url below).
+    image_width: 800
+    image_height: 600
+    camera_name: claw_cam
+    camera_info_url: package://claw_cam/config/calib/claw_cam.yaml
+
+    # --- exposure ---
+    # Boot straight into manual so the cam never runs its own (over-bright) AE in
+    # the ~3s before camera_autotune starts; the node owns exposure from then on.
+    autoexposure: false # true = aperture-priority auto, false = manual `exposure`
+    exposure: 2 # 100us units, 1..5000; <=330 keeps 30fps; only used when manual
+    # ^ mid-ish seed; the autotune node drives this to hit target_mean regardless.
+
+    # --- white balance ---
+    # Manual WB only sets the blue<->red temperature axis; correcting the
+    # sensor's green bias needs auto WB, so a fixed temperature looks greenish.
+    auto_white_balance: true
+    white_balance: 4600 # 2800..6500K; only used when auto_white_balance is false
+
+    # --- image (ranges/defaults from `v4l2-ctl --list-ctrls`) ---
+    # NOTE: whether these usb_cam params stick is inconsistent on this cam (some
+    # land, some fall back to driver defaults — observed 2026-07-09: saturation
+    # from this yaml DID land and won over the launch's one-shot v4l2-ctl seed,
+    # giving a desaturated near-B&W image). The launch now re-applies
+    # V4L2_CONTROLS via v4l2-ctl after every usb_cam (re)start; keep these values
+    # IDENTICAL to V4L2_CONTROLS in usb_cam_test.launch.py so whichever write
+    # lands last produces the same image.
+    brightness: 0 # -64..64, default 0
+    contrast: 32 # 0..64, default 32
+    saturation: 64 # 0..128, default 64
+    sharpness: 6 # 0..6, default 3
+    gain: 0 # 0..100, default 0
+
+    # --- focus: fixed-focus module, leave disabled ---
+    autofocus: false
+    focus: -1

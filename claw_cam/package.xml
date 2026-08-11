@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>claw_cam</name>
+  <version>0.0.0</version>
+  <description>
+    Bringup for the AUV4 claw camera (DWE exploreHD) on the usb_cam driver:
+    launch file, driver parameters, intrinsics, the large-SHM FastDDS profile,
+    and the closed-loop exposure autotuner and freeze watchdog that run
+    alongside the driver. Lives in the Bumblebee usb_cam fork so the driver and
+    the configuration that depends on its patches stay versioned together.
+  </description>
+  <maintainer email="advay.pakhale@gmail.com">Bumblebee Autonomous Systems</maintainer>
+  <license>MIT</license>
+
+  <!-- the driver this package brings up -->
+  <exec_depend>usb_cam</exec_depend>
+
+  <!-- launch -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <!-- camera_autotune_node / camera_freeze_watchdog_node -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <!-- both nodes shell out to v4l2-ctl; the launch file also seeds controls with it -->
+  <exec_depend>v4l-utils</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

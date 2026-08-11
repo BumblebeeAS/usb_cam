@@ -1,0 +1,100 @@
+# Tuning for the closed-loop camera auto-tuner (camera_autotune_node) that drives
+# the claw cam's v4l2 controls. Namespace-agnostic (/**) so it matches whatever
+# namespace the launch pushes (/auv4/claw_cam/camera_autotune).
+#
+# Every param is live-tunable too, e.g.:
+#   ros2 param set /auv4/claw_cam/camera_autotune control_period_sec 0.25
+#   ros2 param set /auv4/claw_cam/camera_autotune target_mean 130
+#
+# NOTE: video_device and min_fps are NOT set here -- the launch passes them so
+# the fps cap stays derived from usb_cam_test.yaml's framerate (one source of
+# truth). Anything set there overrides this file.
+/**/camera_autotune:
+  ros__parameters:
+    # --- cadence (the "tune frequency") ---
+    control_period_sec: 0.3 # control loop tick; 0.5 = 2 Hz. Lower = snappier, more hunting risk.
+    # Meter off the compressed (JPEG) stream instead of raw -- fine for brightness
+    # stats, avoids a second heavy raw subscriber. Needs compressed_image_transport.
+    use_compressed: true
+
+    # --- brightness setpoint ---
+    target_mean: 120.0 # 0..255, mid-gray target the exposure loop chases
+    # Asymmetric "on target" band: tolerate darker (wide low band), clip brighter
+    # (narrow high band). Highlights blow out irrecoverably; shadows are safer.
+    mean_deadband_low: 20.0 # how far BELOW target_mean is left uncorrected (allow darker)
+    mean_deadband_high: 10.0 # how far ABOVE target_mean is left uncorrected (clip brighter)
+
+    # --- exposure loop ---
+    exposure_enabled: true
+    exposure_step_frac: 0.4 # max fractional exposure jump per tick (overshoot guard)
+    # Highlight-priority guard: mean metering is blind to split scenes (dark half
+    # + blown-out bright half average onto target while one side whitewashes). If
+    # more than highlight_clip_max of pixels saturate (>= clip_hi_level), pull
+    # exposure down regardless of mean. Set highlight_clip_max: 1.0 to disable.
+    highlight_clip_max: 0.2 # allowed fraction of saturating pixels
+    highlight_pull: 0.15 # downward exposure nudge per tick when over the clip limit
+    # The exploreHD's JPEG stream carries limited-range BT.601 luma: the sensor
+    # rails at Y=16 (black) and Y=235 (white), and nothing in the pipeline
+    # expands to full range (measured 2026-07-09: ~10% of pixels pinned AT 235
+    # while clip_hi read 0.0%). The node's full-range defaults (250/5) are
+    # unreachable here and silently disable every clip guard, so count "clipped"
+    # at the real rails (+/-1 below/above them to stay under JPEG ringing).
+    clip_hi_level: 234
+    clip_lo_level: 17
+    hunt_window: 10 # ticks of mean history used to detect oscillation
+    hunt_std_thresh: 20.0 # mean std over that window above which we call it "hunting"
+    # Optional hard exposure ceiling in 100us units (0 = derive purely from the
+    # launch's min_fps). Set >0 to cap exposure tighter than the fps limit.
+    exposure_fps_cap: 0
+    # KIV/experimental: maximize histogram spread instead of chasing a fixed mean.
+    # Leave false -- the fixed-mean loop above is the supported path.
+    exposure_spread_mode: false
+
+    # --- brightness trim (anti-windup backup for exposure) ---
+    # Exposure owns the mean; brightness (an additive offset) only kicks in when
+    # exposure is RAILED (floored at 1 / capped) and still off target, then
+    # relaxes back toward 0 as exposure regains room. This is the lever for
+    # "exposure floored but still whitewashed" that exposure alone can't fix
+    # (once brightness also saturates at -64, it's genuinely too much light).
+    # Default off -- bench-verify the exposure loop first, then enable live.
+    brightness_enabled: true
+    brightness_step: 1 # offset units/tick while assisting (int)
+    brightness_relax_step: 1 # offset units/tick relaxing back toward 0 (int)
+
+    # --- v4l2 control-name overrides ---
+    # The node discovers controls from `v4l2-ctl --list-ctrls`; override these if
+    # the driver renames them (this cam has kernel-5.15 renamed UVC controls). A
+    # name not reported by the device is simply skipped, never an error.
+    ae_ctrl_name: auto_exposure
+    exposure_ctrl_name: exposure_time_absolute
+    brightness_ctrl_name: brightness
+    contrast_ctrl_name: contrast
+    gamma_ctrl_name: gamma
+    backlight_ctrl_name: backlight_compensation
+
+    # --- secondary trims (only act once exposure has settled) ---
+    settle_hold_sec: 3.0 # exposure must be calm this long before trims run
+
+    # Contrast trim: nudge the `contrast` control toward a target pixel std.
+    contrast_enabled: false
+    target_std: 57.0 # desired stddev (spread) of the gray image
+    std_deadband: 8.0 # tolerance around target_std before contrast moves
+    contrast_step: 4 # per-tick contrast control step (int units)
+    # Clip guard: refuse to RAISE contrast once clip_hi reaches this fraction of
+    # highlight_clip_max (lowering always allowed). Stops the trim self-clipping
+    # to max on flat/hazy scenes (the 32->64 runaway). 1.0 disables the guard.
+    contrast_clip_guard: 0.5
+
+    # Gamma trim: lift crushed shadows without touching the mean (exposure owns
+    # the mean). Acts on the shadow percentile only, so it stays decoupled.
+    gamma_enabled: false
+    shadow_percentile: 5.0 # which low percentile counts as "shadow"
+    shadow_target: 25.0 # lift that percentile toward this level
+    shadow_deadband: 8.0 # tolerance before gamma moves
+    gamma_step: 10 # per-tick gamma control step (int units)
+
+    # Backlight trim: raise backlight_compensation when highlights clip while the
+    # scene is otherwise dark (backlit); relax it back toward default otherwise.
+    backlight_enabled: false
+    clip_hi_frac_thresh: 0.05 # saturating-pixel fraction that trips "backlit"
+    backlight_cooldown_sec: 10.0 # min seconds between backlight changes

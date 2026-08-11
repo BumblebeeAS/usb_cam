@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Large shared-memory FastDDS profile for the claw_cam (usb_cam) process ONLY.
+
+  WHY: FastDDS keeps a writer's samples in its SHM segment. The DEFAULT segment
+  is 512 KB, which cannot hold a single 1.44 MB raw frame (color/image, 800x600
+  rgb8), let alone the keep-last history. So the raw topic fragments to UDP
+  loopback and drops under best_effort QoS -> the raw stream stalls at ~8-9 Hz
+  while the tiny compressed topic (~50 KB) still flows at ~13 Hz. Enlarging the
+  segment lets a full frame + its depth-5 history live in one contiguous buffer,
+  so raw is delivered over SHM at the real capture rate.
+
+  SIZING (empirical): frame_bytes x keep_last_depth x headroom
+      1.44 MB (800x600x3) x 5 (SensorDataQoS depth) x ~2 (port-queue in-flight,
+      double-buffer, alignment) ~= 14.4 MB  ->  round to 16 MB.
+    16 MB holds ~11 raw frames (comfortable). flir_cam needs 32-256 MB only
+    because its frame is 9.44 MB; scaled to 1.44 MB, 16 MB is the equivalent.)
+    16 MB also fits inside a default 64 MB container /dev/shm, so this alone
+    should not require enlarging the container /dev/shm (no ipc=host needed).
+    If resolution/framerate is raised, recompute.
+
+  SCOPE: loaded on the usb_cam process ONLY, via additional_env=
+  FASTRTPS_DEFAULT_PROFILES_FILE in usb_cam_test.launch.py. The WRITER holds the
+  bytes; every other node (autotune, watchdog, foxglove) stays on default DDS and
+  just mmaps this segment, so the blast radius is ~16 MB extra /dev/shm on the
+  camera process, nothing else on the graph changes. UDPv4 is kept so default
+  multicast discovery (ROS_DOMAIN_ID) still works unchanged.
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <transport_descriptors>
+        <transport_descriptor>
+            <transport_id>claw_big_shm</transport_id>
+            <type>SHM</type>
+            <!-- 16 MB = 1.44 MB frame x depth-5 x ~2 headroom. See sizing above. -->
+            <segment_size>33,554,432</segment_size>
+            <port_queue_capacity>512</port_queue_capacity>
+        </transport_descriptor>
+        <transport_descriptor>
+            <transport_id>udp</transport_id>
+            <type>UDPv4</type>
+        </transport_descriptor>
+    </transport_descriptors>
+
+    <participant profile_name="claw_bigshm_profile" is_default_profile="true">
+        <rtps>
+            <userTransports>
+                <transport_id>claw_big_shm</transport_id>
+                <transport_id>udp</transport_id>
+            </userTransports>
+            <useBuiltinTransports>false</useBuiltinTransports>
+        </rtps>
+    </participant>
+</profiles>

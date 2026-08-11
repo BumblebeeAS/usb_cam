@@ -1,0 +1,25 @@
+# OLD claw cam (DWE exploreHD) calibration -- the earlier Kalibr run, kept only
+# for A/B validation against claw_cam.yaml (see scripts/validate_claw_calib.sh).
+# Do NOT point the camera driver at this file; claw_cam.yaml is the live one.
+# Calibrated at 800x600, pinhole/radtan, same conversion notes as claw_cam.yaml.
+image_width: 800
+image_height: 600
+camera_name: claw_cam
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [708.9626075248706, 0.0, 432.4888596919221, 0.0, 710.1202713811197, 321.3487764404509, 0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+# Kalibr radtan gave 4 coeffs [k1, k2, p1, p2]; ROS plumb_bob expects 5, so k3 = 0.0.
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.31219860892223283, 0.13535004273631818, 0.002162279893196398, -0.002679140551539038, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [708.9626075248706, 0.0, 432.4888596919221, 0.0, 0.0, 710.1202713811197, 321.3487764404509, 0.0, 0.0, 0.0, 1.0, 0.0]
