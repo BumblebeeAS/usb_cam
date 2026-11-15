@@ -37,7 +37,7 @@ USB_CAM_DIR = get_package_share_directory("usb_cam")
 
 
 class CameraConfig(BaseModel):
-    name: str = "auv5/bot_cam"
+    name: str = "dwe_cam"
     param_path: Path = Path(USB_CAM_DIR, "config", "params_1.yaml")
     remappings: Optional[List]
     namespace: Optional[str]
