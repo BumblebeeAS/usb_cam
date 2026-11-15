@@ -21,10 +21,15 @@
 
   SCOPE: loaded on the usb_cam process ONLY, via additional_env=
   FASTRTPS_DEFAULT_PROFILES_FILE in usb_cam_test.launch.py. The WRITER holds the
-  bytes; every other node (autotune, watchdog, foxglove) stays on default DDS and
-  just mmaps this segment, so the blast radius is ~16 MB extra /dev/shm on the
-  camera process, nothing else on the graph changes. UDPv4 is kept so default
-  multicast discovery (ROS_DOMAIN_ID) still works unchanged.
+  bytes; every other node (autotune, watchdog, foxglove) stays on the vehicle
+  default profile (bring-up/etc/auv5/dds/fastdds_local.xml) and just mmaps this
+  segment, so the blast radius is ~16 MB extra /dev/shm on the camera process,
+  nothing else on the graph changes.
+
+  DISCOVERY: this file REPLACES fastdds_local.xml for the usb_cam process (only
+  one FASTRTPS_DEFAULT_PROFILES_FILE is loaded), so the UDPv4 transport below
+  repeats its onboard-only settings: loopback whitelist, unicast initial peers on
+  127.0.0.1, multicast discovery off. Keep the two files in sync.
 -->
 <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <transport_descriptors>
@@ -32,7 +37,7 @@
             <transport_id>claw_big_shm</transport_id>
             <type>SHM</type>
             <!-- 16 MB = 1.44 MB frame x depth-5 x ~2 headroom. See sizing above. -->
-            <segment_size>33,554,432</segment_size>
+            <segment_size>16777216</segment_size>
             <port_queue_capacity>512</port_queue_capacity>
         </transport_descriptor>
         <transport_descriptor>
